@@ -1,0 +1,57 @@
+{
+    "long_poller": {},
+    "buttons": {
+        "comment1": "Главная клавиатура",
+        "lk": "Личный кабинет",
+        "feedback": "Обратная связь",
+        "FAQ": "FAQ",
+        "admin_panel": "Админ-панель",
+
+        "cancel": "Отменв"
+    },
+    "keyboards": {
+        "main": [["lk"], ["feedback"], ["FAQ"]],
+        "admin": [["admin_panel"], ["lk"], ["feedback"], ["FAQ"]],
+        "cancel": [["cancel"]]
+    },
+    "inline_buttons": {
+        "comment2": {
+            "text": "Клавиатура личного кабинета"
+        },
+        "homework_menu": {
+            "text": "Домашнее задание",
+            "unique": "hwMainBtn"
+        },
+        "buy_homework": {
+            "text": "Купить ДЗ",
+            "unique": "buyHWBtn"
+        },
+        "to_courses": {"text": "Курсы",
+                        "unique": "toCoursesBtn"},
+        "send_hw": {
+            "text": "Отправить дз",
+            "unique": "sendhwBtn"
+        },
+        "results": {
+            "text": "Результаты",
+            "unique": "sendresultsbtn"
+        },
+        "ask_hw": {
+            "text": "Задать вопрос",
+            "unique": "askhwsbtn"
+        },
+        "buy_hw": {
+            "text": "Купить",
+            "unique": "buyhwbtn",
+            "callback_data": "."
+        },
+
+        "to_lk": {
+            "text": "В личный кабинет",
+            "unique": "gotomainlk"
+        }
+    },
+    "inline_keyboards": {
+        "lk_kb": [["buy_homework"], ["send_hw"], ["results", "ask_hw"]]
+    }
+}
