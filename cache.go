@@ -12,7 +12,9 @@ type Entry struct {
 
 type Cache struct {
 	CanWrite *Entry
-	Message *Entry
+	Message  *Entry
+	Preview  *Entry
+	TempMailing *Entry
 }
 
 func (e *Entry) Set(key string, val interface{}) {
@@ -21,7 +23,7 @@ func (e *Entry) Set(key string, val interface{}) {
 	e.Unlock()
 }
 
-func (e *Entry) Get(key string) (interface{}, bool)  {
+func (e *Entry) Get(key string) (interface{}, bool) {
 	e.RLock()
 	defer e.RUnlock()
 	val, ok := e.data[key]
@@ -38,7 +40,8 @@ func NewUserCache() *Cache {
 	}
 	return &Cache{
 		CanWrite: entry(),
-		Message: entry(),
+		Message:  entry(),
+		Preview:  entry(),
+		TempMailing:entry(),
 	}
 }
-

@@ -11,8 +11,9 @@ import (
 var b *tb.Bot
 var deltime = 5
 var btnCount = 9
+var cache = NewUserCache()
 
-func main()  {
+func main() {
 	// Bot init
 	tmplEngine := &tb.TemplateText{Dir: "data"}
 	pref, err := tb.NewSettings("bot.json", tmplEngine)
@@ -62,6 +63,36 @@ func main()  {
 			handleErr(err, m)
 		}
 	})
+	b.Handle("/hwqchat", func(m *tb.Message) {
+		permLevel, err := getPermLevel(m.Sender.ID)
+		handleErr(err, m)
+		if permLevel == 3 {
+			groupID := strings.Split(m.Text, " ")[1]
+			err := setConfig("HWQGroup", groupID)
+			handleErr(err, m)
+			groupIDint, err := strconv.Atoi(groupID)
+			handleErr(err, m)
+			_, err = b.Send(&tb.Chat{ID: int64(groupIDint)}, "Чат используется для обработки вопросов")
+			handleErr(err, m)
+			_, err = b.Send(m.Sender, "Чат для вопросов установлен")
+			handleErr(err, m)
+		}
+	})
+	b.Handle("/hwchat", func(m *tb.Message) {
+		permLevel, err := getPermLevel(m.Sender.ID)
+		handleErr(err, m)
+		if permLevel == 3 {
+			groupID := strings.Split(m.Text, " ")[1]
+			err := setConfig("HWGroup", groupID)
+			handleErr(err, m)
+			groupIDint, err := strconv.Atoi(groupID)
+			handleErr(err, m)
+			_, err = b.Send(&tb.Chat{ID: int64(groupIDint)}, "Здесь дз")
+			handleErr(err, m)
+			_, err = b.Send(m.Sender, "Чат для дз установлен")
+			handleErr(err, m)
+		}
+	})
 	b.Handle("/adminchat", func(m *tb.Message) {
 		permLevel, err := getPermLevel(m.Sender.ID)
 		handleErr(err, m)
@@ -85,7 +116,8 @@ func main()  {
 			handleErr(err, m)
 		}
 	})
-
+	b.Handle("/add", func(m *tb.Message) { onAddHW(m) })
+	b.Handle("/del", func(m *tb.Message) { onDelHW(m) })
 
 	b.Handle(b.Button("lk"), func(m *tb.Message) {
 		mail, err := getEmail(m.Sender.ID)
@@ -111,19 +143,100 @@ func main()  {
 		handleErr(err, m)
 	})
 	b.Handle(b.Button("cancel"), onMainMenu())
+	b.Handle(b.Button("admin_panel"), func(m *tb.Message) {
+		_, err := b.Send(m.Sender, "Вы в админ панели",  b.Markup("admin_panelkb"))
+		handleErr(err, m)
+		err = setState(m.Sender.ID, "default")
+		handleErr(err, m)
+	})
+	b.Handle(b.Button("bot_stats"), func(m *tb.Message) {
+		_, err = b.Send(m.Sender, getBotStats(m), tb.ModeHTML)
+		handleErr(err, m)
+	})
+	b.Handle(b.Button("course_stats"), func(m *tb.Message) {
+		_, err = b.Send(m.Sender, getCourseStats(m), tb.ModeHTML)
+		handleErr(err, m)
+	})
+	b.Handle(b.Button("new_mailing"), func(m *tb.Message) {
+		_, err = b.Send(m.Sender, b.Text("CreateMailing"), b.Markup("to_admin"))
+		handleErr(err, m)
+		err = setState(m.Sender.ID, "enterMailing")
+		handleErr(err, m)
+	})
+	b.Handle(b.Button("to_main"), func(m *tb.Message) {
+		_, err = b.Send(m.Sender, b.Text("Start", m.Sender), mainKB(m), tb.ModeHTML)
+		handleErr(err, m)
+	})
 
 	b.Handle(b.InlineButton("buy_homework"), buyHWboard())
 	b.Handle(b.InlineButton("to_courses"), buyHWboard())
 	b.Handle(b.InlineButton("to_lk"), func(c *tb.Callback) {
+		err = setState(c.Sender.ID, "default")
 		_, err = b.Edit(c.Message, b.Text("YouInLK"), b.InlineMarkup("lk_kb"))
 		handleErr(err, c.Message)
 	})
+	b.Handle(b.InlineButton("to_feedback"), func(c *tb.Callback) {
+		_, err = b.Send(c.Sender, b.Text("EnterFeedback"), b.Markup("cancel"), tb.ModeHTML)
+		handleErr(err, c.Message)
+		err = setState(c.Sender.ID, "enterFeedback")
+		handleErr(err, c.Message)
+	})
+	b.Handle(b.InlineButton("ask_hw"), func(c *tb.Callback) {
+		premium, err := isPremium(c.Sender.ID)
+		handleErr(err, c.Message)
+		if !premium {
+			_, err = b.Edit(c.Message, b.Text("NoPremium"), b.InlineMarkup("premium_error"))
+			handleErr(err, c.Message)
+			return
+		}
+		_, err = b.Edit(c.Message, b.Text("EnterQuestion"), b.InlineMarkup("to_lk_kb"), tb.ModeHTML)
+		handleErr(err, c.Message)
+		err = setState(c.Sender.ID, "enterQuestion")
+		handleErr(err, c.Message)
+		cache.Message.Set(strconv.Itoa(c.Sender.ID), c.Message)
+	})
+	b.Handle(b.InlineButton("del_service"), func(c *tb.Callback) {
+		err = b.Delete(c.Message)
+		handleErr(err, c.Message)
+		err = b.Respond(c, &tb.CallbackResponse{Text: "Отменено", CallbackID: c.ID})
+	})
+	b.Handle(b.InlineButton("add_service"), func(c *tb.Callback) {
+		prev, _ := cache.Preview.Get(strconv.Itoa(c.Sender.ID))
+		err = addService(prev.(Preview).PreviewService)
+		handleErr(err, c.Message)
+		_, err = b.Edit(c.Message, b.Text("AddHWSuccess"))
+		handleErr(err, c.Message)
+	})
+	b.Handle(b.InlineButton("erase_service"), func(c *tb.Callback) {
+		msg, _ := cache.Message.Get(strconv.Itoa(c.Sender.ID))
+		err = b.Delete(msg.(*tb.Message))
+		handleErr(err, c.Message)
+		err = delService(c.Data)
+		handleErr(err, c.Message)
+		err = b.Respond(c, &tb.CallbackResponse{Text: "Удалено"})
+		handleErr(err, c.Message)
+	})
+	b.Handle(b.InlineButton("send_now"), func(c *tb.Callback) {
+		temp, _ := cache.TempMailing.Get(strconv.Itoa(c.Sender.ID))
+		Distribution(temp.(TempMailing))
+	})
+	b.Handle(tb.OnUserJoined, func(m *tb.Message) {
+		permLevel, err := getPermLevel(m.Sender.ID)
+		if err != nil {
+			err = b.Ban(m.Chat, &tb.ChatMember{User: m.Sender})
+			handleErr(err, m)
+		}
+		if permLevel < 3 {
+			err = b.Ban(m.Chat, &tb.ChatMember{User: m.Sender})
+			handleErr(err, m)
+		}
+	})
 
-	
 	b.Start()
+
 }
 
-func handleErr(err error, m *tb.Message)  {
+func handleErr(err error, m *tb.Message) {
 	if err != nil {
 		_, _ = b.Send(m.Chat, b.Text("Error", err.Error()), tb.ModeHTML)
 		panic(err.Error())
@@ -190,20 +303,18 @@ func genKBoard(offset int, message *tb.Message) *tb.ReplyMarkup {
 		crange = courses[btnCount*offset:]
 		rallow = false
 	} else {
-		crange = courses[btnCount*offset:btnCount*offset+btnCount]
+		crange = courses[btnCount*offset : btnCount*offset+btnCount]
 	}
 
-	if btnCount * offset-btnCount <= 0 {
+	if btnCount*offset-btnCount <= 0 {
 		lallow = false
 	}
 
-
-
-	for _,course := range crange {
+	for _, course := range crange {
 		cb := tb.InlineButton{
-			Unique:          course.ServiceID,
-			Text:            course.Name,
-			Data:            course.ServiceID,
+			Unique: course.ServiceID,
+			Text:   course.Name,
+			Data:   course.ServiceID,
 		}
 		keyboard = append(keyboard, []tb.InlineButton{cb})
 		b.Handle(&cb, func(c *tb.Callback) {
@@ -213,7 +324,7 @@ func genKBoard(offset int, message *tb.Message) *tb.ReplyMarkup {
 		})
 	}
 
-	if len(courses) <= btnCount  {
+	if len(courses) <= btnCount {
 
 	} else {
 		keyboard = append(keyboard, genCoursesNav(rallow, lallow, offset))
@@ -227,12 +338,12 @@ func genKBoard(offset int, message *tb.Message) *tb.ReplyMarkup {
 func genCoursesNav(rallow bool, lallow bool, lastOffset int) []tb.InlineButton {
 	var buttons []tb.InlineButton
 	rightArr := tb.InlineButton{
-		Unique:          "rbBtn",
-		Text:            ">>",
+		Unique: "rbBtn",
+		Text:   ">>",
 	}
 	leftArr := tb.InlineButton{
-		Unique:          "lbBtn",
-		Text:            "<<",
+		Unique: "lbBtn",
+		Text:   "<<",
 	}
 	if !rallow {
 		buttons = append(buttons, leftArr)
@@ -246,12 +357,12 @@ func genCoursesNav(rallow bool, lallow bool, lastOffset int) []tb.InlineButton {
 	}
 
 	b.Handle(&rightArr, func(c *tb.Callback) {
-			_, err := b.Edit(c.Message, b.Text("SelectCourse"), genKBoard(lastOffset +1, c.Message))
-			handleErr(err, c.Message)
+		_, err := b.Edit(c.Message, b.Text("SelectCourse"), genKBoard(lastOffset+1, c.Message))
+		handleErr(err, c.Message)
 	})
 	b.Handle(&leftArr, func(c *tb.Callback) {
-			_, err := b.Edit(c.Message, b.Text("SelectCourse"), genKBoard(lastOffset -1, c.Message))
-			handleErr(err, c.Message)
+		_, err := b.Edit(c.Message, b.Text("SelectCourse"), genKBoard(lastOffset-1, c.Message))
+		handleErr(err, c.Message)
 
 	})
 
@@ -269,20 +380,19 @@ func genCourseKBoard(offset int, message *tb.Message, courseID string) *tb.Reply
 	if len(lessons) < btnCount*offset+btnCount {
 		crange = lessons[btnCount*offset:]
 		rallow = false
-	}  else {
-		crange = lessons[btnCount*offset:btnCount*offset+btnCount]
+	} else {
+		crange = lessons[btnCount*offset : btnCount*offset+btnCount]
 	}
 
-	if btnCount * offset-btnCount <= 0 {
+	if btnCount*offset-btnCount <= 0 {
 		lallow = false
 	}
 
-
-	for _,course := range crange {
+	for _, course := range crange {
 		btn := tb.InlineButton{
-			Unique:          course.ServiceID,
-			Text:            course.Name,
-			Data:            course.ServiceID,
+			Unique: course.ServiceID,
+			Text:   course.Name,
+			Data:   course.ServiceID,
 		}
 
 		keyboard = append(keyboard, []tb.InlineButton{btn})
@@ -295,7 +405,7 @@ func genCourseKBoard(offset int, message *tb.Message, courseID string) *tb.Reply
 		})
 	}
 
-	if len(lessons) <= btnCount  {
+	if len(lessons) <= btnCount {
 
 	} else {
 		keyboard = append(keyboard, genLessonsNav(rallow, lallow, offset, courseID))
@@ -309,12 +419,12 @@ func genCourseKBoard(offset int, message *tb.Message, courseID string) *tb.Reply
 func genLessonsNav(rallow bool, lallow bool, lastOffset int, courseId string) []tb.InlineButton {
 	var buttons []tb.InlineButton
 	rightArr := tb.InlineButton{
-		Unique:          "rbBtn",
-		Text:            ">>",
+		Unique: "rbBtn",
+		Text:   ">>",
 	}
 	leftArr := tb.InlineButton{
-		Unique:          "lbBtn",
-		Text:            "<<",
+		Unique: "lbBtn",
+		Text:   "<<",
 	}
 	if !rallow {
 		buttons = append(buttons, leftArr)
@@ -328,15 +438,73 @@ func genLessonsNav(rallow bool, lallow bool, lastOffset int, courseId string) []
 	}
 
 	b.Handle(&rightArr, func(c *tb.Callback) {
-		_, err := b.Edit(c.Message, b.Text("SelectCourse"), genCourseKBoard(lastOffset +1, c.Message, courseId))
+		_, err := b.Edit(c.Message, b.Text("SelectCourse"), genCourseKBoard(lastOffset+1, c.Message, courseId))
 		handleErr(err, c.Message)
 	})
 	b.Handle(&leftArr, func(c *tb.Callback) {
-		_, err := b.Edit(c.Message, b.Text("SelectCourse"), genCourseKBoard(lastOffset -1, c.Message, courseId))
+		_, err := b.Edit(c.Message, b.Text("SelectCourse"), genCourseKBoard(lastOffset-1, c.Message, courseId))
 		handleErr(err, c.Message)
 
 	})
 
-
 	return buttons
+}
+
+func getBotStats(m *tb.Message) string {
+	var usersCount int
+	var active int
+	var canSendHW int
+	var premium int
+	var stopped int
+	var sentFeedback int
+
+	err = db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&usersCount)
+	handleErr(err, m)
+
+	err = db.QueryRow(`SELECT COUNT(*) FROM users WHERE cardinality(courses) > 0`).Scan(&canSendHW)
+	handleErr(err, m)
+
+	err = db.QueryRow(`SELECT COUNT(*) FROM users WHERE premium = true`).Scan(&premium)
+	handleErr(err, m)
+
+	err = db.QueryRow(`SELECT COUNT(*) FROM users WHERE isblocked = true`).Scan(&stopped)
+	handleErr(err, m)
+
+	err = db.QueryRow(`SELECT COUNT(*) FROM users WHERE feedbackmessage > 0`).Scan(&active)
+	handleErr(err, m)
+
+	err = db.QueryRow(`SELECT SUM(messagesfeedbacked) FROM users`).Scan(&sentFeedback)
+	handleErr(err, m)
+
+	stringBuilder := fmt.Sprintf(`<b>Статистика бота</b>:
+<b>Количество пользователей:</b> %d
+
+<b>Пользователи:</b>
+Которые оплачивали услуги: %d
+С возможностью отправки дз: %d
+
+<b>Сообщения:</b>
+Отправленные в обратную связь: %d
+Активных сообщений: %d
+
+Забанили бота: %d
+`,
+		usersCount, premium, canSendHW, sentFeedback, active, stopped)
+	return stringBuilder
+}
+func getCourseStats(m *tb.Message) string {
+	var sb string
+	sb += "Статистика по курсам\n\n"
+	courses, err := getCourses()
+	handleErr(err, m)
+	for _, course := range courses {
+		sb += fmt.Sprintf("<b>%v. %v</b>\nВсего: %d\n", course.ServiceID, course.Name, course.Bought)
+		lessons, err := getServicesByCourse(course.ServiceID)
+		handleErr(err, m)
+		for _, lesson := range lessons {
+			sb += fmt.Sprintf("%v - %d\n", lesson.ServiceID, lesson.Bought)
+		}
+		sb += "\n"
+	}
+	return sb
 }

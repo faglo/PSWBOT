@@ -7,12 +7,20 @@
         "FAQ": "FAQ",
         "admin_panel": "Админ-панель",
 
-        "cancel": "Отменв"
+        "cancel": "Отменв",
+        "to_main": "В главное меню",
+
+        "course_stats": "Статистика курсов",
+        "bot_stats": "Статистика бота",
+        "new_mailing": "Новая рассылка",
+        "mailings": "Рассылки"
     },
     "keyboards": {
         "main": [["lk"], ["feedback"], ["FAQ"]],
         "admin": [["admin_panel"], ["lk"], ["feedback"], ["FAQ"]],
-        "cancel": [["cancel"]]
+        "cancel": [["cancel"]],
+        "admin_panelkb": [["course_stats", "bot_stats"], ["new_mailing", "mailings"], ["to_main"]],
+        "to_admin": [["admin_panel"]]
     },
     "inline_buttons": {
         "comment2": {
@@ -43,15 +51,53 @@
         "buy_hw": {
             "text": "Купить",
             "unique": "buyhwbtn",
-            "callback_data": "."
+            "callback_data": "{{.}}"
         },
 
         "to_lk": {
             "text": "В личный кабинет",
             "unique": "gotomainlk"
+        },
+
+        "to_feedback": {
+            "text": "Обратная связь",
+            "unique": "feedbackinlinebtn"
+        },
+        "article": {
+            "text": "Статья",
+            "unique": "articlecheckof",
+            "url": "{{.ArticleURL}}"
+        },
+        "add_service": {
+            "text": "Добавить",
+            "unique": "addtodbbtn"
+        },
+        "del_service": {
+            "text": "Отменить",
+            "unique": "canceladdtodbbtn"
+        },
+        "erase_service": {
+            "text": "Удалить",
+            "unique": "permdelbtn",
+            "callback_data": "{{.}}"
+        },
+
+        "send_now": {
+            "text": "Отправить",
+            "unique": "snowdqwda"
+        },
+        "seclude": {
+            "text": "Запланировать",
+            "unique": "secludemailingbt"
         }
     },
     "inline_keyboards": {
-        "lk_kb": [["buy_homework"], ["send_hw"], ["results", "ask_hw"]]
+        "confirm_service_kb": [["add_service", "del_service"]],
+        "lk_kb": [["buy_homework"], ["send_hw"], ["results", "ask_hw"]],
+        "premium_error": [["to_feedback"], ["to_lk"]],
+        "to_lk_kb": [["to_lk"]],
+        "article_btn": [["article"]],
+        "delete_service": [["erase_service"]],
+        "pre_send": [["send_now", "seclude"]]
     }
 }

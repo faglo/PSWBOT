@@ -294,10 +294,10 @@ func getHWChat(userID int) (int, error) {
 	return chatId, nil
 }
 
-func getUserByHWQ(messageID int, chatID int64) (int, error) {
+func getUserByHWQ(messageID int) (int, error) {
 	var userID int
 
-	row := db.QueryRow(`SELECT userid FROM users WHERE groupid = $1 AND $2 = ANY (hwquestionmessages)`, chatID, messageID)
+	row := db.QueryRow(`SELECT userid FROM users WHERE $1 = ANY (hwquestionmessages)`, messageID)
 	err = row.Scan(&userID)
 	if err != nil {
 		return 0, err
@@ -464,7 +464,6 @@ func changeStatus(text string, status string) error {
 	return nil
 }
 
-
 // ========================SERVICES===========================
 
 func getServices(userID int) ([]Service, error) {
@@ -614,6 +613,11 @@ func addService(service Service) error {
 		return err
 	}
 	return nil
+}
+
+func delService(id string) error {
+	_, err = db.Exec(`DELETE FROM courses WHERE serviceid = $1`, id)
+	return err
 }
 
 // =========================STRUCTS===========================
