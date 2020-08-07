@@ -3,7 +3,6 @@ package main
 import (
 	tb "github.com/demget/telebot"
 	"log"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -14,10 +13,10 @@ type Preview struct {
 	PreviewService Service
 }
 type TempMailing struct {
-	 mailing *tb.Message
-	 stime time.Time
-	 isNow bool
-	 last_msg *tb.Message
+	mailing  *tb.Message
+	stime    time.Time
+	isNow    bool
+	last_msg *tb.Message
 }
 
 func onText() func(m *tb.Message) {
@@ -26,32 +25,23 @@ func onText() func(m *tb.Message) {
 			state, err := getState(m.Sender.ID)
 			handleErr(err, m)
 			switch state {
-			case "enterEmail":
-				{
-					email, err := getEmail(m.Sender.ID)
-					handleErr(err, m)
-					re := regexp.MustCompile("(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|\"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*\")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\\[(?:(?:(2(5[0-5]|[0-4][0-9])|1[0-9][0-9]|[1-9]?[0-9]))\\.){3}(?:(2(5[0-5]|[0-4][0-9])|1[0-9][0-9]|[1-9]?[0-9])|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)])")
-					if !re.Match([]byte(m.Text)) {
-						_, err = b.Send(m.Sender, b.Text("IncorrectMail"))
-						handleErr(err, m)
-					} else if email == m.Text {
-						_, err = b.Send(m.Sender, b.Text("ExistMail"))
-						handleErr(err, m)
-					} else {
-						err = setEmail(m.Sender.ID, m.Text)
-						handleErr(err, m)
-						_, err = b.Reply(m, "Вы успешно зарегистрировались!", b.Markup("main"))
-						handleErr(err, m)
-						err = setState(m.Sender.ID, "default")
-						handleErr(err, m)
-					}
-				}
 			case "enterFeedback":
 				onFeedback(m)
 			case "enterQuestion":
 				onQuestion(m)
 			case "enterMailing":
 				onMailing(m)
+			case "sendZip":
+			case "writeCommentReject":
+				preview, err := b.Send(m.Sender, b.Text("HWCommentPreview", m.Text), b.InlineMarkup("comment_kb"))
+				handleErr(err, m)
+				adminCacheRaw, _ := cache.AdminCache.Get(strconv.Itoa(m.Sender.ID))
+				adminCache := adminCacheRaw.(AdminCache)
+				adminCache.PreviewMsg = preview
+				adminCache.Comment = m.Text
+				adminCache.CheckingHW.AdminComment = m.Text
+				adminCache.Reject = true
+				cache.AdminCache.Set(strconv.Itoa(m.Sender.ID), adminCache)
 			}
 		} else {
 			groupHandler(m)
@@ -100,6 +90,8 @@ func onDocument() func(m *tb.Message) {
 			switch state {
 			case "enterFeedback":
 				onFeedback(m)
+			case "sendZip":
+				onSentZip(m)
 			}
 		} else {
 			cid, err := getConfig("HWGroup")
@@ -339,6 +331,100 @@ func onAddHW(m *tb.Message) {
 
 	_, err = b.Send(m.Sender, b.Text("sendConfirm"), b.InlineMarkup("confirm_service_kb"))
 }
+func onEditHW(m *tb.Message) {
+	chatRaw, err := getConfig("HWGroup")
+	handleErr(err, m)
+	chat, _ := strconv.Atoi(chatRaw)
+
+	if m.Chat.ID != int64(chat) {
+		return
+	}
+
+	if m.Document != nil {
+		m.Text = m.Caption
+	}
+
+	fieldsRaw := strings.Split(m.Text, "#")
+	var fields []string
+	var typeOf string
+	var article string
+	var price int
+	var fileID string
+	var template string
+
+	for i, fieldRaw := range fieldsRaw {
+		if i == 2 {
+			fields = append(fields, fieldRaw)
+			continue
+		}
+		field := strings.Trim(fieldRaw, "\n")
+		fields = append(fields, field)
+	}
+
+	sid := strings.Split(fields[0], " ")[1]
+	_, err = getService(sid)
+	if err != nil {
+		handleErr(err, m)
+	}
+
+	if strings.Contains(sid, ".") {
+		typeOf = "lesson"
+	} else {
+		typeOf = "course"
+	}
+
+	if len(fields) == 5 {
+		article = fields[4]
+	}
+
+	price, err = strconv.Atoi(fields[3])
+	handleErr(err, m)
+
+	if m.Document != nil {
+		fileID = m.Document.FileID
+	}
+
+	course := Service{
+		ServiceID:   sid,
+		Type:        typeOf,
+		Description: fields[2],
+		FileURI:     fileID,
+		Price:       price,
+		ArticleURL:  article,
+		Name:        fields[1],
+		Bought:      0,
+	}
+
+	_, err = b.Send(m.Chat, b.Text("ServicePreview", course))
+	handleErr(err, m)
+	if course.Type == "lesson" {
+		template = "buyLesson"
+	} else if course.Type == "course" {
+		template = "CourseInfo"
+	}
+	if course.FileURI != "" && course.ArticleURL != "" {
+		_, err = b.Send(m.Chat, &tb.Document{
+			File:    tb.File{FileID: course.FileURI},
+			Caption: b.Text(template, course),
+		}, b.InlineMarkup("article_btn", course))
+	} else if course.ArticleURL != "" {
+		_, err = b.Send(m.Chat, b.Text(template, course), b.InlineMarkup("article_btn", course))
+	} else if course.FileURI != "" {
+		_, err = b.Send(m.Chat, &tb.Document{
+			File:    tb.File{FileID: course.FileURI},
+			Caption: b.Text(template, course),
+		})
+	} else {
+		_, err = b.Send(m.Chat, b.Text(template, course))
+	}
+
+	err = delService(course.ServiceID)
+	handleErr(err, m)
+	err = addService(course)
+	handleErr(err, m)
+	_, err = b.Send(m.Sender, b.Text("editHWSuccess"))
+	handleErr(err, m)
+}
 func onDelHW(m *tb.Message) {
 	chatRaw, err := getConfig("HWGroup")
 	handleErr(err, m)
@@ -378,4 +464,45 @@ func onMailing(m *tb.Message) {
 	}
 	cache.TempMailing.Set(strconv.Itoa(m.Sender.ID), temp)
 
+}
+func onSentZip(m *tb.Message) {
+	hwGroupRaw, err := getConfig("HWGroup")
+	handleErr(err, m)
+	hwGroup, _ := strconv.Atoi(hwGroupRaw)
+	serviceID, _ := cache.UserCache.Get(strconv.Itoa(m.Sender.ID))
+	rawService := strings.Split(serviceID.(string), ".")
+	course, _ := strconv.Atoi(rawService[0])
+	lesson, _ := strconv.Atoi(rawService[1])
+	service, err := getService(serviceID.(string))
+	handleErr(err, m)
+	result := HomeworkResult{
+		UserID:      m.Sender.ID,
+		Course:      course,
+		Lesson:      lesson,
+		Grade:       0,
+		IsGraded:    false,
+		MessageID:   0,
+		ResultID:    0,
+		UserComment: m.Caption,
+		Username: m.Sender.Username,
+		CourseName: service.Name,
+	}
+	if m.Caption != "" {
+		m.Caption = "Комментраий: "+m.Caption
+	}
+	m.Document.Caption = "<i>Обработка</i>"
+	gradeMessage, err := b.Send(&tb.Chat{ID:int64(hwGroup)}, m.Document, tb.ModeHTML)
+	handleErr(err, m)
+	result.MessageID = gradeMessage.ID
+	_, err = b.Send(m.Sender, b.Text("HWSent", result))
+	handleErr(err, m)
+	m.Document.Caption = b.Text("ForGraduate", result)
+	_, err = b.Edit(gradeMessage, m.Document, b.InlineMarkup("pre_rate", result.MessageID), tb.ModeHTML)
+	handleErr(err, m)
+	err = SetResult(result)
+	handleErr(err, m)
+	err = removeService(serviceID.(string), m.Sender.ID)
+	handleErr(err, m)
+	err = setState(m.Sender.ID, "default")
+	handleErr(err, m)
 }

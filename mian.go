@@ -41,6 +41,8 @@ func main() {
 				_, err = b.Send(m.Sender, b.Text("Start", m.Sender), b.Markup("main"), tb.ModeHTML)
 				handleErr(err, m)
 			} else {
+				err = setState(m.Sender.ID, "default")
+				handleErr(err, m)
 				_, err = b.Send(m.Sender, b.Text("Start", m.Sender), mainKB(m), tb.ModeHTML)
 				handleErr(err, m)
 			}
@@ -118,19 +120,17 @@ func main() {
 	})
 	b.Handle("/add", func(m *tb.Message) { onAddHW(m) })
 	b.Handle("/del", func(m *tb.Message) { onDelHW(m) })
-
-	b.Handle(b.Button("lk"), func(m *tb.Message) {
-		mail, err := getEmail(m.Sender.ID)
-		handleErr(err, m)
-		if mail == "" {
-			_, err = b.Send(m.Sender, b.Text("FirstLK"), b.Markup("cancel_email"))
-			handleErr(err, m)
-			err = setState(m.Sender.ID, "enterEmail")
-			handleErr(err, m)
-		} else {
-			_, err = b.Send(m.Sender, b.Text("YouInLK"), b.InlineMarkup("lk_kb"))
+	b.Handle("/edit", func(m *tb.Message) { onEditHW(m) })
+	b.Handle("/test", func(m *tb.Message) {
+		_, err = b.Send(m.Sender, "iwiopefi", b.InlineMarkup("grading"))
+		if err != nil {
 			handleErr(err, m)
 		}
+	})
+
+	b.Handle(b.Button("lk"), func(m *tb.Message) {
+		_, err = b.Send(m.Sender, b.Text("YouInLK"), b.InlineMarkup("lk_kb"))
+		handleErr(err, m)
 	})
 	b.Handle(b.Button("FAQ"), func(m *tb.Message) {
 		_, err = b.Send(m.Sender, b.Text("FAQ"), tb.ModeHTML)
@@ -144,7 +144,7 @@ func main() {
 	})
 	b.Handle(b.Button("cancel"), onMainMenu())
 	b.Handle(b.Button("admin_panel"), func(m *tb.Message) {
-		_, err := b.Send(m.Sender, "Вы в админ панели",  b.Markup("admin_panelkb"))
+		_, err := b.Send(m.Sender, "Вы в админ панели", b.Markup("admin_panelkb"))
 		handleErr(err, m)
 		err = setState(m.Sender.ID, "default")
 		handleErr(err, m)
@@ -219,8 +219,52 @@ func main() {
 	b.Handle(b.InlineButton("send_now"), func(c *tb.Callback) {
 		temp, _ := cache.TempMailing.Get(strconv.Itoa(c.Sender.ID))
 		Distribution(temp.(TempMailing))
+		_, err := b.Send(c.Sender, "Вы в админ панели", b.Markup("admin_panelkb"))
+		handleErr(err, c.Message)
+		err = setState(c.Sender.ID, "default")
+		handleErr(err, c.Message)
 	})
-	b.Handle(tb.OnUserJoined, func(m *tb.Message) {
+	b.Handle(b.InlineButton("send_hw"), func(c *tb.Callback) {
+		premium, err := isNowPremium(c.Sender.ID)
+		handleErr(err, c.Message)
+		if premium == false {
+			_, err = b.Edit(c.Message, b.Text("NoBought"), b.InlineMarkup("quick_buy"))
+			handleErr(err, c.Message)
+			return
+		} else {
+			_, err = b.Edit(c.Message, b.Text("SelectHWtoSend"), genSendHWKB(c, 0))
+			handleErr(err, c.Message)
+		}
+	})
+	b.Handle(b.InlineButton("dismiss"), func(c *tb.Callback) {
+		hwID, _ := strconv.Atoi(c.Data)
+		result, err := GetResult(hwID)
+		handleErr(err, c.Message)
+		cache.AdminCache.Set(strconv.Itoa(c.Sender.ID), AdminCache{CheckingHW: result})
+		c.Message.Document.Caption = c.Message.Caption + "\n"
+		_, err = b.Edit(c.Message, c.Message.Document, b.InlineMarkup("send_comment_msg"))
+		handleErr(err, c.Message)
+		_, err = b.Send(c.Sender, "Введите комментарий")
+		err = setState(c.Sender.ID, "writeCommentReject")
+		handleErr(err, c.Message)
+	})
+	b.Handle(b.InlineButton("apply_comment"), func(c *tb.Callback) {
+		resultRaw, _ := cache.AdminCache.Get(strconv.Itoa(c.Sender.ID))
+		result := resultRaw.(AdminCache)
+		if result.Reject {
+			_, err = b.Send(&tb.User{ID: result.CheckingHW.UserID}, b.Text("RejectedHW", result.CheckingHW))
+			handleErr(err, c.Message)
+			err = RemoveResult(result.CheckingHW.MessageID)
+			handleErr(err, c.Message)
+			err = addLesson(strconv.Itoa(result.CheckingHW.Course) + "." + strconv.Itoa(result.CheckingHW.Lesson), result.CheckingHW.UserID)
+			handleErr(err, c.Message)
+			_, err = b.Edit(result.PreviewMsg, b.Text("CommentSent", result.CheckingHW))
+			handleErr(err, c.Message)
+			err = setState(c.Sender.ID, "default")
+			handleErr(err, c.Message)
+		}
+	})
+ 	b.Handle(tb.OnUserJoined, func(m *tb.Message) {
 		permLevel, err := getPermLevel(m.Sender.ID)
 		if err != nil {
 			err = b.Ban(m.Chat, &tb.ChatMember{User: m.Sender})
@@ -334,7 +378,6 @@ func genKBoard(offset int, message *tb.Message) *tb.ReplyMarkup {
 
 	return &tb.ReplyMarkup{InlineKeyboard: keyboard}
 }
-
 func genCoursesNav(rallow bool, lallow bool, lastOffset int) []tb.InlineButton {
 	var buttons []tb.InlineButton
 	rightArr := tb.InlineButton{
@@ -415,7 +458,6 @@ func genCourseKBoard(offset int, message *tb.Message, courseID string) *tb.Reply
 
 	return &tb.ReplyMarkup{InlineKeyboard: keyboard}
 }
-
 func genLessonsNav(rallow bool, lallow bool, lastOffset int, courseId string) []tb.InlineButton {
 	var buttons []tb.InlineButton
 	rightArr := tb.InlineButton{
@@ -448,6 +490,86 @@ func genLessonsNav(rallow bool, lallow bool, lastOffset int, courseId string) []
 	})
 
 	return buttons
+}
+
+func genSendHWNav(rallow bool, lallow bool, lastOffset int) []tb.InlineButton {
+	var buttons []tb.InlineButton
+	rightArr := tb.InlineButton{
+		Unique: "rbBtn",
+		Text:   ">>",
+	}
+	leftArr := tb.InlineButton{
+		Unique: "lbBtn",
+		Text:   "<<",
+	}
+	if !rallow {
+		buttons = append(buttons, leftArr)
+	} else if !lallow {
+		buttons = append(buttons, rightArr)
+	} else if !lallow && !rallow {
+		return buttons
+	} else {
+		buttons = append(buttons, leftArr)
+		buttons = append(buttons, rightArr)
+	}
+
+	b.Handle(&rightArr, func(c *tb.Callback) {
+		_, err = b.Edit(c.Message, b.Text("SelectHWtoSend"), genSendHWKB(c, lastOffset+1))
+		handleErr(err, c.Message)
+	})
+	b.Handle(&leftArr, func(c *tb.Callback) {
+		_, err := b.Edit(c.Message, b.Text("SelectCourse"), genSendHWKB(c, lastOffset-1))
+		handleErr(err, c.Message)
+
+	})
+	return buttons
+}
+func genSendHWKB(c *tb.Callback, offset int) *tb.ReplyMarkup {
+	services, err := getServices(c.Sender.ID)
+	handleErr(err, c.Message)
+
+	var keyboard [][]tb.InlineButton
+	var crange []Service
+	var rallow = true
+	var lallow = true
+
+	if len(services) < btnCount*offset+btnCount {
+		crange = services[btnCount*offset:]
+		rallow = false
+	} else {
+		crange = services[btnCount*offset : btnCount*offset+btnCount]
+	}
+
+	if btnCount*offset-btnCount <= 0 {
+		lallow = false
+	}
+
+	for i, lesson := range crange {
+		cb := tb.InlineButton{
+			Unique:          "slesbtn"+strconv.Itoa(i),
+			Text:            lesson.Name,
+			Data:            lesson.ServiceID,
+		}
+		keyboard = append(keyboard, []tb.InlineButton{cb})
+		b.Handle(&cb, func(c *tb.Callback) {
+			cache.UserCache.Set(strconv.Itoa(c.Sender.ID), c.Data)
+			err = setState(c.Sender.ID, "sendZip")
+			handleErr(err, c.Message)
+			_, err = b.Edit(c.Message, b.Text("AttachZip"), b.InlineMarkup("to_lk_kb"))
+			handleErr(err, c.Message)
+		})
+	}
+
+	if len(services) <= btnCount {
+
+	} else {
+		keyboard = append(keyboard, genSendHWNav(rallow, lallow, offset))
+	}
+
+	keyboard = append(keyboard, []tb.InlineButton{*b.InlineButton("to_lk")})
+
+	return &tb.ReplyMarkup{InlineKeyboard: keyboard}
+
 }
 
 func getBotStats(m *tb.Message) string {

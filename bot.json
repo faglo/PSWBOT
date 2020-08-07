@@ -89,6 +89,85 @@
         "seclude": {
             "text": "Запланировать",
             "unique": "secludemailingbt"
+        },
+
+        "rate": {
+            "text": "Оценить",
+            "unique": "graduatehw",
+            "callback_data": "{{.}}"
+        },
+        "dismiss": {
+            "text": "Отклонить",
+            "unique": "rejecthw",
+            "callback_data": "{{.}}"
+        },
+
+        "grade1": {
+            "text": "1",
+            "unique": "firstgarde",
+            "callback_data": "{{.}}"
+        },
+        "grade2": {
+            "text": "2",
+            "unique": "secgarde",
+            "callback_data": "{{.}}"
+        },
+        "grade3": {
+            "text": "3",
+            "unique": "thirdgarde",
+            "callback_data": "{{.}}"
+        },
+        "grade4": {
+            "text": "4",
+            "unique": "fourthgarde",
+            "callback_data": "{{.}}"
+        },
+        "grade5": {
+            "text": "5",
+            "unique": "fifthtgarde",
+            "callback_data": "{{.}}"
+        },
+        "grade6": {
+            "text": "6",
+            "unique": "sixthtgarde",
+            "callback_data": "{{.}}"
+        },
+        "grade7": {
+            "text": "7",
+            "unique": "svnthtgarde",
+            "callback_data": "{{.}}"
+        },
+        "grade8": {
+            "text": "8",
+            "unique": "eigthtgarde",
+            "callback_data": "{{.}}"
+        },
+        "grade9": {
+            "text": "9",
+            "unique": "ninthtgarde",
+            "callback_data": "{{.}}"
+        },
+        "grade10": {
+            "text": "10",
+            "unique": "tenthtgarde",
+            "callback_data": "{{.}}"
+        },
+        "cancel_grade": {
+            "text": "Отмена",
+            "unique": "gradecancel",
+            "callback_data": "{{.}}"
+        },
+        "send_comment": {
+            "text": "Ожмдается комментарий",
+            "unique": "commentwaitingmsg"
+        },
+        "checked": {
+            "text": "Проверенно",
+            "unique": "checkedhwmsg"
+        },
+        "apply_comment": {
+            "text": "Отправить",
+            "unique": "sendcommentbtn"
         }
     },
     "inline_keyboards": {
@@ -98,6 +177,13 @@
         "to_lk_kb": [["to_lk"]],
         "article_btn": [["article"]],
         "delete_service": [["erase_service"]],
-        "pre_send": [["send_now", "seclude"]]
+        "pre_send": [["send_now", "seclude"]],
+        "pre_rate": [["rate", "dismiss"]],
+        "quick_buy": [["buy_homework"], ["to_lk"]],
+        "grading": [["grade1", "grade2", "grade3", "grade4", "grade5"], ["grade6", "grade7", "grade8", "grade9", "grade10"], ["cancel_grade"]],
+        "send_comment_msg": [["send_comment"]],
+        "checked_msg": [["checked"]],
+        "cancel_btn": [["cancel_grade"]],
+        "comment_kb": [["cancel_grade", "apply_comment"]]
     }
 }

@@ -106,7 +106,7 @@ func checkUser(userID int) (bool, error) {
 
 func addUser(userID int, username string) error {
 	_, err = db.Exec(`INSERT INTO users (userID, username, mail, permissionLevel, premium, groupID, hwQuestionMessages, feedbackMessage, hwMessage,
-                   messagesSent, hwCount, courses, state, isBlocked, isBanned) values ($1, $2, 'none', 0, false, 0, 0, 0, 0, 1, 0, NULL, 'default', false, false)`, userID, username)
+                   messagesSent, hwCount, courses, state, isBlocked, isBanned) values ($1, $2, 'none', 0, false, 0, [], 0, 0, 1, 0, [], 'default', false, false)`, userID, username)
 	if err != nil {
 		return err
 	}
@@ -181,28 +181,6 @@ func getUserByMessage(messageID int) (int, error) {
 	return userID, nil
 }
 
-func getEmail(userID int) (string, error) {
-	var mail string
-
-	row := db.QueryRow(`SELECT mail FROM users WHERE userid = $1`, userID)
-	err = row.Scan(&mail)
-	if err != nil {
-		return "", err
-	}
-	if mail == "none" {
-		return "", nil
-	}
-	return mail, nil
-}
-
-func setEmail(userID int, mail string) error {
-	_, err = db.Exec(`UPDATE users SET mail = $1 WHERE userID = $2`, mail, userID)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 func getUsers(userType string) ([]int, error) {
 	var userID int
 	var userIDS []int
@@ -273,6 +251,9 @@ func isNowPremium(userID int) (bool, error) {
 	row := db.QueryRow(`SELECT array_length(courses, 1) FROM users WHERE userid = $1`, userID)
 	err = row.Scan(&arrlen)
 	if err != nil {
+		if strings.Contains(err.Error(), "NULL to int") {
+			return false, nil
+		}
 		return false, err
 	}
 	if arrlen > 0 {
@@ -620,6 +601,53 @@ func delService(id string) error {
 	return err
 }
 
+func removeService(serviceID string, userID int) error {
+	_, err = db.Exec(`UPDATE users SET courses = array_remove(courses, $1) WHERE userID = $2`, serviceID, userID)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func addLesson(serviceID string, userID int) error {
+	service, err := getService(serviceID)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(`UPDATE users SET courses = array_append(courses, $1) WHERE userid = $2`, service.ServiceID, userID)
+	return err
+}
+
+// ========================HOMEWORK===========================
+
+func SetResult(result HomeworkResult) error {
+	_, err = db.Exec(`INSERT INTO results(userid, courseid, lessonid, rating, rated, messageid, user_comment, admin_comment, course_name) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, result.UserID, result.Course, result.Lesson, result.Grade, result.IsGraded, result.MessageID, result.UserComment, result.AdminComment, result.CourseName)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+func SetGrade(grade int, messageID int) error {
+	_, err = db.Exec(`UPDATE results set rating = $1 AND rated = true WHERE messageid = $2`, grade, messageID)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+func GetResult(messageID int) (HomeworkResult, error) {
+	var hwResult HomeworkResult
+	err = db.QueryRow("SELECT * FROM results WHERE messageid = $1", messageID).Scan(&hwResult.UserID, &hwResult.Course, &hwResult.Lesson, &hwResult.Grade, &hwResult.IsGraded, &hwResult.MessageID, &hwResult.ResultID, &hwResult.AdminComment, &hwResult.CourseName, &hwResult.UserComment)
+	if err != nil {
+		return HomeworkResult{}, err
+	}
+
+	return hwResult, nil
+}
+func RemoveResult(messageID int) error {
+	_, err = db.Exec(`DELETE FROM results WHERE messageid = $1`, messageID)
+	return err
+}
+
 // =========================STRUCTS===========================
 
 type Mailing struct {
@@ -639,4 +667,18 @@ type Service struct {
 	ArticleURL  string
 	Name        string
 	Bought      int
+}
+
+type HomeworkResult struct {
+	UserID int
+	Course int
+	Lesson int
+	Grade  int
+	IsGraded bool
+	MessageID int
+	ResultID int
+	UserComment string
+	Username string
+	CourseName string
+	AdminComment string
 }

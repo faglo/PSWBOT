@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	tb "github.com/demget/telebot"
 	"sync"
 )
 
@@ -11,10 +12,23 @@ type Entry struct {
 }
 
 type Cache struct {
-	CanWrite *Entry
-	Message  *Entry
-	Preview  *Entry
+	CanWrite    *Entry
+	Message     *Entry
+	Preview     *Entry
 	TempMailing *Entry
+	UserCache 	*Entry
+	AdminCache  *Entry
+}
+
+type UserCache struct {
+	ReservedService string
+}
+
+type AdminCache struct {
+	CheckingHW HomeworkResult
+	PreviewMsg *tb.Message
+	Comment string
+	Reject bool
 }
 
 func (e *Entry) Set(key string, val interface{}) {
@@ -39,9 +53,11 @@ func NewUserCache() *Cache {
 		return &Entry{data: data}
 	}
 	return &Cache{
-		CanWrite: entry(),
-		Message:  entry(),
-		Preview:  entry(),
-		TempMailing:entry(),
+		CanWrite:    entry(),
+		Message:     entry(),
+		Preview:     entry(),
+		TempMailing: entry(),
+		UserCache:	 entry(),
+		AdminCache:  entry(),
 	}
 }
