@@ -16,7 +16,7 @@ type Cache struct {
 	Message     *Entry
 	Preview     *Entry
 	TempMailing *Entry
-	UserCache 	*Entry
+	UserCache   *Entry
 	AdminCache  *Entry
 }
 
@@ -27,8 +27,9 @@ type UserCache struct {
 type AdminCache struct {
 	CheckingHW HomeworkResult
 	PreviewMsg *tb.Message
-	Comment string
-	Reject bool
+	Comment    string
+	Reject     bool
+	CheckMsg   *tb.Message
 }
 
 func (e *Entry) Set(key string, val interface{}) {
@@ -57,7 +58,7 @@ func NewUserCache() *Cache {
 		Message:     entry(),
 		Preview:     entry(),
 		TempMailing: entry(),
-		UserCache:	 entry(),
+		UserCache:   entry(),
 		AdminCache:  entry(),
 	}
 }

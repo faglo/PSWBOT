@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	tb "github.com/demget/telebot"
 	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 	"log"
@@ -393,21 +392,14 @@ func getAdmins() ([]int, error) {
 	return userIDS, nil
 }
 
-func addMailing(m *tb.Message, timestamp time.Time, userType string, status string) error {
-	if userType == "всем" {
-		userType = "default"
-	} else if userType == "покупателям" {
-		userType = "premium"
-	}
-
-	defer db.Close()
-	if m.Photo == nil {
-		_, err = db.Exec(`INSERT INTO mailings(type, time, text, status, photo) VALUES('default', $1, $2, $3, '')`, timestamp, stringBuilder(m), status)
+func addMailing(mailing TempMailing) error {
+	if mailing.mailing.Photo == nil {
+		_, err = db.Exec(`INSERT INTO mailings(type, time, text, status, photo) VALUES('default', $1, $2, '', '')`, mailing.stime, stringBuilder(mailing.mailing))
 		if err != nil {
 			return err
 		}
 	} else {
-		_, err = db.Exec(`INSERT INTO mailings(type, time, text, status, photo) VALUES('default', $1, $2, $3, $4)`, timestamp, stringBuilder(m), status, m.Photo.FileID)
+		_, err = db.Exec(`INSERT INTO mailings(type, time, text, status, photo) VALUES('default', $1, $2, '', $4)`, mailing.stime, stringBuilder(mailing.mailing), mailing.mailing.Photo.FileID)
 		if err != nil {
 			return err
 		}
@@ -627,8 +619,8 @@ func SetResult(result HomeworkResult) error {
 	}
 	return nil
 }
-func SetGrade(grade int, messageID int) error {
-	_, err = db.Exec(`UPDATE results set rating = $1 AND rated = true WHERE messageid = $2`, grade, messageID)
+func setGrade(grade int, messageID int) error {
+	_, err = db.Exec(`UPDATE results set rating = $1, rated = true WHERE messageid = $2`, grade, messageID)
 	if err != nil {
 		return err
 	}
@@ -646,6 +638,45 @@ func GetResult(messageID int) (HomeworkResult, error) {
 func RemoveResult(messageID int) error {
 	_, err = db.Exec(`DELETE FROM results WHERE messageid = $1`, messageID)
 	return err
+}
+func resetGrade(messageID int) error {
+	_, err = db.Exec(`UPDATE results set rating = 0, rated = false WHERE messageid = $2`, messageID)
+	return err
+}
+func getResults(userID int) ([][]HomeworkResult, error) {
+	var courses []int
+	var course int
+	var results [][]HomeworkResult
+	rows, err := db.Query(`SELECT DISTINCT(courseid) FROM results WHERE userid = $1 AND rated = true ORDER BY courseid`, userID)
+	if err != nil {
+		return [][]HomeworkResult{}, err
+	}
+	for rows.Next() {
+		err = rows.Scan(&course)
+		if err != nil {
+			return [][]HomeworkResult{}, err
+		}
+		courses = append(courses, course)
+	}
+
+	for _, cid := range courses {
+		var result HomeworkResult
+		var cresults []HomeworkResult
+		rows, err := db.Query(`SELECT * FROM results WHERE userid = $1 AND courseid = $2 AND rated = true ORDER BY lessonid`, userID, cid)
+		if err != nil {
+			return [][]HomeworkResult{}, err
+		}
+		for rows.Next() {
+			err = rows.Scan(&result.UserID, &result.Course, &result.Lesson, &result.Grade, &result.IsGraded, &result.MessageID, &result.ResultID, &result.AdminComment, &result.CourseName, &result.UserComment)
+			if err != nil {
+				return [][]HomeworkResult{}, err
+			}
+			cresults = append(cresults, result)
+		}
+		results = append(results, cresults)
+	}
+
+	return results, err
 }
 
 // =========================STRUCTS===========================
@@ -670,15 +701,15 @@ type Service struct {
 }
 
 type HomeworkResult struct {
-	UserID int
-	Course int
-	Lesson int
-	Grade  int
-	IsGraded bool
-	MessageID int
-	ResultID int
-	UserComment string
-	Username string
-	CourseName string
+	UserID       int
+	Course       int
+	Lesson       int
+	Grade        int
+	IsGraded     bool
+	MessageID    int
+	ResultID     int
+	UserComment  string
+	Username     string
+	CourseName   string
 	AdminComment string
 }

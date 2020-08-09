@@ -158,16 +158,34 @@
             "callback_data": "{{.}}"
         },
         "send_comment": {
-            "text": "Ожмдается комментарий",
+            "text": "Ожидается комментарий",
             "unique": "commentwaitingmsg"
         },
         "checked": {
-            "text": "Проверенно",
+            "text": "Проверено",
             "unique": "checkedhwmsg"
         },
         "apply_comment": {
             "text": "Отправить",
             "unique": "sendcommentbtn"
+        },
+
+        "free": {
+            "text": "Молитва",
+            "unique": "freecoursetest",
+            "callback_data": "{{.}}"
+        },
+        "edit_date": {
+            "text": "Изменить время",
+            "unique": "changetime4m"
+        },
+        "edit_text": {
+            "text": "Изменить текст",
+            "unique": "changetext4m"
+        },
+        "delete_mailing": {
+            "text": "Удалить",
+            "unique": "deletemailing4m"
         }
     },
     "inline_keyboards": {
@@ -184,6 +202,8 @@
         "send_comment_msg": [["send_comment"]],
         "checked_msg": [["checked"]],
         "cancel_btn": [["cancel_grade"]],
-        "comment_kb": [["cancel_grade", "apply_comment"]]
+        "comment_kb": [["cancel_grade", "apply_comment"]],
+        "payments": [["free"]],
+        "edit_mailing": [["edit_date", "edit_text"], ["delete_mailing"]]
     }
 }

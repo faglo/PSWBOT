@@ -122,10 +122,30 @@ func main() {
 	b.Handle("/del", func(m *tb.Message) { onDelHW(m) })
 	b.Handle("/edit", func(m *tb.Message) { onEditHW(m) })
 	b.Handle("/test", func(m *tb.Message) {
-		_, err = b.Send(m.Sender, "iwiopefi", b.InlineMarkup("grading"))
-		if err != nil {
+		results, err := getResults(m.Sender.ID)
+		handleErr(err, m)
+		fmt.Println(results)
+	})
+	b.Handle("/buy", func(m *tb.Message) {
+		args := strings.Split(m.Text, " ")
+		if len(args) < 2 {
+			_, err = b.Send(m.Sender, "Недостаточно аргументов")
 			handleErr(err, m)
+			return
 		}
+		course, err := getService(args[1])
+		if err != nil {
+			if strings.Contains(err.Error(), "no rows") {
+				_, err = b.Send(m.Sender, "Сервиса не существует")
+				handleErr(err, m)
+				return
+			} else {
+				handleErr(err,m)
+			}
+		}
+		sb := fmt.Sprintf("Услуга %v\nОписание: %v\nЦена: %d₽\n\nВыберите способ оплаты", course.Name, course.Description, course.Price)
+		_, err = b.Send(m.Sender, sb, b.InlineMarkup("payments", args[1]))
+		handleErr(err, m)
 	})
 
 	b.Handle(b.Button("lk"), func(m *tb.Message) {
@@ -165,6 +185,21 @@ func main() {
 	})
 	b.Handle(b.Button("to_main"), func(m *tb.Message) {
 		_, err = b.Send(m.Sender, b.Text("Start", m.Sender), mainKB(m), tb.ModeHTML)
+		handleErr(err, m)
+	})
+	b.Handle(b.Button("mailings"), func(m *tb.Message) {
+		mailings, err := getMailings()
+		handleErr(err, m)
+		var buttons [][]tb.ReplyButton
+		for i, mailing := range mailings {
+			btn := tb.ReplyButton{Text: strconv.Itoa(i+1) + mailing.Time.Format(". 2006.01.02 15:04")}
+			b.Handle(&btn, func(m *tb.Message) {
+				_, err = b.Send(m.Sender, mailing.Text, b.InlineMarkup("edit_mailing"))
+			})
+			buttons = append(buttons, []tb.ReplyButton{btn})
+		}
+		buttons = append(buttons, []tb.ReplyButton{*b.Button("admin_panel")})
+		_, err = b.Send(m.Sender, "Запланированые рассылки", &tb.ReplyMarkup{ReplyKeyboard:buttons, ResizeReplyKeyboard:true})
 		handleErr(err, m)
 	})
 
@@ -240,7 +275,7 @@ func main() {
 		hwID, _ := strconv.Atoi(c.Data)
 		result, err := GetResult(hwID)
 		handleErr(err, c.Message)
-		cache.AdminCache.Set(strconv.Itoa(c.Sender.ID), AdminCache{CheckingHW: result})
+		cache.AdminCache.Set(strconv.Itoa(c.Sender.ID), AdminCache{CheckingHW: result, CheckMsg: c.Message})
 		c.Message.Document.Caption = c.Message.Caption + "\n"
 		_, err = b.Edit(c.Message, c.Message.Document, b.InlineMarkup("send_comment_msg"))
 		handleErr(err, c.Message)
@@ -256,15 +291,74 @@ func main() {
 			handleErr(err, c.Message)
 			err = RemoveResult(result.CheckingHW.MessageID)
 			handleErr(err, c.Message)
-			err = addLesson(strconv.Itoa(result.CheckingHW.Course) + "." + strconv.Itoa(result.CheckingHW.Lesson), result.CheckingHW.UserID)
+			err = addLesson(strconv.Itoa(result.CheckingHW.Course)+"."+strconv.Itoa(result.CheckingHW.Lesson), result.CheckingHW.UserID)
 			handleErr(err, c.Message)
 			_, err = b.Edit(result.PreviewMsg, b.Text("CommentSent", result.CheckingHW))
+			handleErr(err, c.Message)
+			result.CheckMsg.Document.Caption = result.CheckMsg.Caption + "\n"
+			_, err = b.Edit(result.CheckMsg, result.CheckMsg.Document, b.InlineMarkup("checked_msg"))
+			handleErr(err, c.Message)
+			err = setState(c.Sender.ID, "default")
+			handleErr(err, c.Message)
+		} else {
+			_, err = b.Send(&tb.User{ID: result.CheckingHW.UserID}, b.Text("AppliedHW", result.CheckingHW))
+			handleErr(err, c.Message)
+			_, err = b.Edit(result.PreviewMsg, b.Text("CommentSent", result.CheckingHW))
+			handleErr(err, c.Message)
+			result.CheckMsg.Document.Caption = result.CheckMsg.Caption + "\n"
+			_, err = b.Edit(result.CheckMsg, result.CheckMsg.Document, b.InlineMarkup("checked_msg"))
 			handleErr(err, c.Message)
 			err = setState(c.Sender.ID, "default")
 			handleErr(err, c.Message)
 		}
 	})
- 	b.Handle(tb.OnUserJoined, func(m *tb.Message) {
+	b.Handle(b.InlineButton("cancel_grade"), func(c *tb.Callback) {
+		_, err = b.Edit(c.Message, "Отменено")
+		admincRaw, _ := cache.AdminCache.Get(strconv.Itoa(c.Sender.ID))
+		adminc := admincRaw.(AdminCache)
+		adminc.CheckMsg.Document.Caption = adminc.CheckMsg.Caption + "\n"
+		_, err = b.Edit(adminc.CheckMsg, adminc.CheckMsg.Document, b.InlineMarkup("pre_rate", adminc.CheckingHW.MessageID), tb.ModeHTML)
+		handleErr(err, c.Message)
+		err = setState(c.Sender.ID, "default")
+		handleErr(err, c.Message)
+		err = resetGrade(adminc.CheckingHW.MessageID)
+		handleErr(err, c.Message)
+	})
+	b.Handle(b.InlineButton("rate"), func(c *tb.Callback) {
+		hwID, _ := strconv.Atoi(c.Data)
+		result, err := GetResult(hwID)
+		handleErr(err, c.Message)
+		cache.AdminCache.Set(strconv.Itoa(c.Sender.ID), AdminCache{CheckingHW: result, CheckMsg: c.Message})
+		c.Message.Document.Caption = c.Message.Caption + "\n"
+		_, err = b.Edit(c.Message, c.Message.Document, b.InlineMarkup("grading", c.Data))
+		handleErr(err, c.Message)
+	})
+	b.Handle(b.InlineButton("results"), func(c *tb.Callback) {
+		_, err = b.Edit(c.Message, genResults(c), b.InlineMarkup("to_lk_kb"))
+		handleErr(err, c.Message)
+	})
+	b.Handle(b.InlineButton("free"), func(c *tb.Callback) {
+		if strings.Contains(c.Data, ".") {
+			err = addLesson(c.Data, c.Sender.ID)
+			handleErr(err, c.Message)
+		} else {
+			lessons, err := getServicesByCourse(c.Data)
+			handleErr(err, c.Message)
+			for _,lesson := range lessons {
+				err = addLesson(lesson.ServiceID, c.Sender.ID)
+				handleErr(err, c.Message)
+			}
+		}
+		_, err = b.Edit(c.Message, "Покупка завершена\nПомолитесь богу иначе вам пизда")
+		handleErr(err, c.Message)
+	})
+	b.Handle(b.InlineButton("seclude"), func(c *tb.Callback) {
+		_, err = b.Edit(c.Message, b.Text("EnterMailingTime"))
+		handleErr(err, c.Message)
+		err = setState(c.Sender.ID, "enterMailingTime")
+		handleErr(err, c.Message)
+	})
+	b.Handle(tb.OnUserJoined, func(m *tb.Message) {
 		permLevel, err := getPermLevel(m.Sender.ID)
 		if err != nil {
 			err = b.Ban(m.Chat, &tb.ChatMember{User: m.Sender})
@@ -275,6 +369,17 @@ func main() {
 			handleErr(err, m)
 		}
 	})
+
+	b.Handle(b.InlineButton("grade1"), onGrade(1))
+	b.Handle(b.InlineButton("grade2"), onGrade(2))
+	b.Handle(b.InlineButton("grade3"), onGrade(3))
+	b.Handle(b.InlineButton("grade4"), onGrade(4))
+	b.Handle(b.InlineButton("grade5"), onGrade(5))
+	b.Handle(b.InlineButton("grade6"), onGrade(6))
+	b.Handle(b.InlineButton("grade7"), onGrade(7))
+	b.Handle(b.InlineButton("grade8"), onGrade(8))
+	b.Handle(b.InlineButton("grade9"), onGrade(9))
+	b.Handle(b.InlineButton("grade10"), onGrade(10))
 
 	b.Start()
 
@@ -546,9 +651,9 @@ func genSendHWKB(c *tb.Callback, offset int) *tb.ReplyMarkup {
 
 	for i, lesson := range crange {
 		cb := tb.InlineButton{
-			Unique:          "slesbtn"+strconv.Itoa(i),
-			Text:            lesson.Name,
-			Data:            lesson.ServiceID,
+			Unique: "slesbtn" + strconv.Itoa(i),
+			Text:   lesson.Name,
+			Data:   lesson.ServiceID,
 		}
 		keyboard = append(keyboard, []tb.InlineButton{cb})
 		b.Handle(&cb, func(c *tb.Callback) {
@@ -629,4 +734,41 @@ func getCourseStats(m *tb.Message) string {
 		sb += "\n"
 	}
 	return sb
+}
+
+func onGrade(grade int) func(c *tb.Callback) {
+	return func(c *tb.Callback) {
+		mID, _ := strconv.Atoi(c.Data)
+		err = setGrade(grade, mID)
+		c.Message.Document.Caption = c.Message.Caption + "\n"
+		_, err = b.Edit(c.Message, c.Message.Document, b.InlineMarkup("send_comment_msg"))
+		handleErr(err, c.Message)
+
+		admincRaw, _ := cache.AdminCache.Get(strconv.Itoa(c.Sender.ID))
+		adminc := admincRaw.(AdminCache)
+		adminc.CheckingHW.Grade = grade
+		adminc.CheckingHW.IsGraded = true
+		cache.AdminCache.Set(strconv.Itoa(c.Sender.ID), adminc)
+
+		_, err = b.Send(c.Sender, "Введите комментарий")
+		handleErr(err, c.Message)
+		err = setState(c.Sender.ID, "writeCommentApply")
+		handleErr(err, c.Message)
+	}
+}
+
+func genResults(c *tb.Callback) string {
+	results, err := getResults(c.Sender.ID)
+	handleErr(err, c.Message)
+	var stringBuilder string
+	stringBuilder += "Ваши результаты:\n\n"
+	for _, courses := range results {
+		for _, lesson := range courses {
+			stringBuilder += strconv.Itoa(lesson.Course) + "." + strconv.Itoa(lesson.Lesson) + " "
+			stringBuilder += lesson.CourseName + " - "
+			stringBuilder += strconv.Itoa(lesson.Grade) + "/10\n"
+		}
+		stringBuilder += "\n\n"
+	}
+	return stringBuilder
 }

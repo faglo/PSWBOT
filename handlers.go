@@ -3,6 +3,7 @@ package main
 import (
 	tb "github.com/demget/telebot"
 	"log"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -42,6 +43,36 @@ func onText() func(m *tb.Message) {
 				adminCache.CheckingHW.AdminComment = m.Text
 				adminCache.Reject = true
 				cache.AdminCache.Set(strconv.Itoa(m.Sender.ID), adminCache)
+			case "writeCommentApply":
+				preview, err := b.Send(m.Sender, b.Text("HWCommentPreview", m.Text), b.InlineMarkup("comment_kb"))
+				handleErr(err, m)
+				adminCacheRaw, _ := cache.AdminCache.Get(strconv.Itoa(m.Sender.ID))
+				adminCache := adminCacheRaw.(AdminCache)
+				adminCache.PreviewMsg = preview
+				adminCache.Comment = m.Text
+				adminCache.CheckingHW.AdminComment = m.Text
+				adminCache.Reject = false
+				cache.AdminCache.Set(strconv.Itoa(m.Sender.ID), adminCache)
+			case "enterMailingTime":
+				match, _ := regexp.MatchString(`^(0?[1-9]|[12][0-9]|3[01])\.(0?[1-9]|1[0-2])\.\d\d\d\d (00|[0-9]|1[0-9]|2[0-3])$`, m.Text)
+				if !match {
+					_, err = b.Send(m.Sender, "Неверный формат времени")
+					handleErr(err, m)
+					return
+				}
+				format := `02.01.2006 15`
+				t,err := time.Parse(format, m.Text)
+				handleErr(err, m)
+				tempRaw, _ := cache.TempMailing.Get(strconv.Itoa(m.Sender.ID))
+				temp := tempRaw.(TempMailing)
+				temp.isNow = false
+				temp.stime = t
+				err = addMailing(temp)
+				handleErr(err, m)
+				_, err = b.Send(m.Sender, "Поставлено в очередь", b.Markup("admin_panelkb"))
+				handleErr(err, m)
+				err = setState(m.Sender.ID, "default")
+				handleErr(err, m)
 			}
 		} else {
 			groupHandler(m)
@@ -484,14 +515,14 @@ func onSentZip(m *tb.Message) {
 		MessageID:   0,
 		ResultID:    0,
 		UserComment: m.Caption,
-		Username: m.Sender.Username,
-		CourseName: service.Name,
+		Username:    m.Sender.Username,
+		CourseName:  service.Name,
 	}
 	if m.Caption != "" {
-		m.Caption = "Комментраий: "+m.Caption
+		m.Caption = "Комментраий: " + m.Caption
 	}
 	m.Document.Caption = "<i>Обработка</i>"
-	gradeMessage, err := b.Send(&tb.Chat{ID:int64(hwGroup)}, m.Document, tb.ModeHTML)
+	gradeMessage, err := b.Send(&tb.Chat{ID: int64(hwGroup)}, m.Document, tb.ModeHTML)
 	handleErr(err, m)
 	result.MessageID = gradeMessage.ID
 	_, err = b.Send(m.Sender, b.Text("HWSent", result))
@@ -505,4 +536,8 @@ func onSentZip(m *tb.Message) {
 	handleErr(err, m)
 	err = setState(m.Sender.ID, "default")
 	handleErr(err, m)
+}
+
+func onBuy()  {
+	
 }
